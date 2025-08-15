@@ -206,3 +206,48 @@
     (ok net-amount)
   )
 )
+
+;; UTILITY FUNCTIONS
+
+(define-private (get-user-balance-amount (user principal))
+  (let ((balance-opt (map-get? user-balances { user: user })))
+    (if (is-some balance-opt)
+      (get amount (unwrap-panic balance-opt))
+      u0
+    )
+  )
+)
+
+;; READ-ONLY INTERFACE
+
+(define-read-only (get-total-locked-bitcoin)
+  (var-get total-locked-bitcoin)
+)
+
+(define-read-only (get-user-balance (user principal))
+  (get-user-balance-amount user)
+)
+
+(define-read-only (is-oracle-authorized (oracle principal))
+  (default-to false (map-get? authorized-oracles oracle))
+)
+
+(define-read-only (get-bridge-fee-percentage)
+  (var-get bridge-fee-percentage)
+)
+
+(define-read-only (get-max-deposit-amount)
+  (var-get max-deposit-amount)
+)
+
+(define-read-only (get-bridge-status)
+  (var-get is-bridge-paused)
+)
+
+(define-read-only (is-transaction-processed (tx-hash (string-ascii 64)))
+  (default-to false (map-get? processed-transactions { tx-hash: tx-hash }))
+)
+
+(define-read-only (is-recipient-whitelisted (recipient principal))
+  (default-to false (map-get? recipient-whitelist recipient))
+)
