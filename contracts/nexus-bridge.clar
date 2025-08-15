@@ -129,3 +129,80 @@
     (ok true)
   )
 )
+
+;; BRIDGE CONTROL MECHANISMS
+
+(define-public (pause-bridge)
+  (begin
+    (try! (check-is-bridge-owner))
+    (var-set is-bridge-paused true)
+    (ok true)
+  )
+)
+
+(define-public (unpause-bridge)
+  (begin
+    (try! (check-is-bridge-owner))
+    (var-set is-bridge-paused false)
+    (ok true)
+  )
+)
+
+(define-public (update-bridge-fee (new-fee uint))
+  (begin
+    (try! (check-is-bridge-owner))
+    (asserts! (< new-fee u100) ERR-INVALID-AMOUNT)
+    (var-set bridge-fee-percentage new-fee)
+    (ok true)
+  )
+)
+
+(define-public (update-max-deposit (new-max uint))
+  (begin
+    (try! (check-is-bridge-owner))
+    (asserts! (> new-max u0) ERR-INVALID-AMOUNT)
+    (asserts! (< new-max u100000000) ERR-INVALID-AMOUNT)
+    (var-set max-deposit-amount new-max)
+    (ok true)
+  )
+)
+
+;; CORE BRIDGE FUNCTIONALITY
+
+(define-public (deposit-bitcoin
+    (btc-tx-hash (string-ascii 64))
+    (amount uint)
+    (recipient principal)
+  )
+  (let (
+      (fee (/ (* amount (var-get bridge-fee-percentage)) u1000))
+      (net-amount (- amount fee))
+      (is-whitelisted (default-to false (map-get? recipient-whitelist recipient)))
+    )
+    ;; Input validation
+    (asserts! (is-valid-tx-hash btc-tx-hash) ERR-INVALID-TX-HASH)
+    (asserts! (> amount u0) ERR-INVALID-AMOUNT)
+    (asserts! (<= amount (var-get max-deposit-amount)) ERR-MAX-DEPOSIT-EXCEEDED)
+    (asserts! (is-valid-principal recipient) ERR-INVALID-RECIPIENT)
+    (asserts! is-whitelisted ERR-INVALID-RECIPIENT)
+
+    ;; Bridge state validation
+    (asserts! (not (var-get is-bridge-paused)) ERR-BRIDGE-PAUSED)
+    (asserts!
+      (is-none (map-get? processed-transactions { tx-hash: btc-tx-hash }))
+      ERR-TRANSACTION-PROCESSED
+    )
+
+    ;; Oracle validation
+    (try! (validate-bitcoin-transaction btc-tx-hash amount))
+
+    ;; Execute token minting
+    (try! (ft-mint? wrapped-bitcoin net-amount recipient))
+
+    ;; Update protocol state
+    (map-set processed-transactions { tx-hash: btc-tx-hash } true)
+    (var-set total-locked-bitcoin (+ (var-get total-locked-bitcoin) amount))
+
+    (ok net-amount)
+  )
+)
